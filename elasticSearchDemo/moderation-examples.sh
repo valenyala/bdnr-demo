@@ -59,7 +59,8 @@ curl -s -X GET "$ES_HOST/forum_reports/_search?pretty" -H 'Content-Type: applica
       }
     }
   }
-}' | jq '.aggregations.posts_mas_reportados.buckets[] | {post_id: .key, reports: .doc_count, reasons: [.razones.buckets[].key]}'
+}' | \
+  jq '.aggregations.posts_mas_reportados.buckets[] | {post_id: .key, reports: .doc_count, reasons: [.razones.buckets[].key]}'
 
 echo ""
 echo ""

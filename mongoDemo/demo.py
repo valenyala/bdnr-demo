@@ -1,9 +1,8 @@
-from pymongo import MongoClient
-from pymongo.errors import ConnectionFailure, OperationFailure
+from pymongo import MongoClient,  read_concern, write_concern
+from pymongo.errors import ConnectionFailure
 from bson import ObjectId
 from datetime import datetime, timedelta
 import random
-from decimal import Decimal
 
 def connect_to_mongodb():
     """Conectar al replica set de MongoDB"""
@@ -16,18 +15,18 @@ def connect_to_mongodb():
         
         # Verificar conexión
         client.admin.command('ping')
-        print("✅ Conexión exitosa al replica set de MongoDB")
+        print("Conexión exitosa al replica set de MongoDB")
         
         # Verificar que hay un PRIMARY
         status = client.admin.command('replSetGetStatus')
         primary = [m for m in status['members'] if m['stateStr'] == 'PRIMARY']
         if primary:
-            print(f"✅ PRIMARY encontrado: {primary[0]['name']}")
+            print(f"PRIMARY encontrado: {primary[0]['name']}")
         
         return client
         
     except ConnectionFailure as e:
-        print(f"❌ Error de conexión: {e}")
+        print(f"Error de conexión: {e}")
         print("Verifica que:")
         print("  1. Los contenedores estén corriendo: docker-compose ps")
         print("  2. El replica set esté inicializado: docker exec -it mongo1 mongosh --eval 'rs.status()'")
@@ -218,21 +217,21 @@ def load_sample_data(db):
     print("="*60)
     
     # 1. PLANES
-    print("\n📋 Insertando planes...")
+    print("\nInsertando planes...")
     plans_collection = db.plans
     plans_collection.drop()  # Limpiar colección
     
     plans = get_sample_plans()
     result = plans_collection.insert_many(plans)
     plan_ids = result.inserted_ids
-    print(f"✅ {len(plan_ids)} planes insertados")
+    print(f"{len(plan_ids)} planes insertados")
     
     # Mostrar planes
     for plan in plans:
         print(f"   - {plan['name']}: ${plan['price']['amount']} {plan['price']['currency']}")
     
     # 2. CUPONES
-    print("\n🎟️  Insertando cupones...")
+    print("\n Insertando cupones...")
     coupons_collection = db.coupons
     coupons_collection.drop()
     
@@ -242,18 +241,18 @@ def load_sample_data(db):
     
     result = coupons_collection.insert_many(coupons)
     coupon_ids = result.inserted_ids
-    print(f"✅ {len(coupon_ids)} cupones insertados")
+    print(f"{len(coupon_ids)} cupones insertados")
     
     for coupon in coupons:
         print(f"   - {coupon['code']}: {coupon['value']}% off")
     
     # 3. USUARIOS
-    print("\n👥 Generando usuarios...")
+    print("\nGenerando usuarios...")
     users = generate_sample_users(20)
-    print(f"✅ {len(users)} usuarios generados")
+    print(f"{len(users)} usuarios generados")
     
     # 4. SUSCRIPCIONES
-    print("\n💳 Creando suscripciones...")
+    print("\nCreando suscripciones...")
     subscriptions_collection = db.subscriptions
     subscriptions_collection.drop()
     
@@ -276,6 +275,7 @@ def load_sample_data(db):
         subscription = {
             "_id": ObjectId(),
             "user_id": user["_id"],
+            "username": user["username"],
             "plan": {
                 "plan_id": plan_ids[plans.index(plan)],
                 "name": plan["name"],
@@ -324,7 +324,7 @@ def load_sample_data(db):
     
     result = subscriptions_collection.insert_many(subscriptions)
     subscription_ids = result.inserted_ids
-    print(f"✅ {len(subscription_ids)} suscripciones insertadas")
+    print(f"{len(subscription_ids)} suscripciones insertadas")
     
     # Estadísticas de suscripciones
     status_counts = {}
@@ -336,7 +336,7 @@ def load_sample_data(db):
         print(f"   - {status}: {count}")
     
     # 5. FACTURAS
-    print("\n🧾 Generando facturas...")
+    print("\nGenerando facturas...")
     invoices_collection = db.invoices
     invoices_collection.drop()
     
@@ -386,6 +386,7 @@ def load_sample_data(db):
                 "_id": ObjectId(),
                 "invoice_number": f"INV-2025-{invoice_counter:06d}",
                 "user_id": subscription['user_id'],
+                "username": subscription['username'],
                 "subscription_id": subscription['_id'],
                 "status": invoice_status,
                 "subtotal": subtotal,
@@ -443,7 +444,7 @@ def load_sample_data(db):
             invoice_counter += 1
     
     result = invoices_collection.insert_many(invoices)
-    print(f"✅ {len(result.inserted_ids)} facturas insertadas")
+    print(f"{len(result.inserted_ids)} facturas insertadas")
     
     # Estadísticas de facturas
     invoice_status_counts = {}
@@ -456,10 +457,10 @@ def load_sample_data(db):
     print("\n   Estado de facturas:")
     for status, count in invoice_status_counts.items():
         print(f"   - {status}: {count}")
-    print(f"\n   💰 Revenue total: ${total_revenue:.2f}")
+    print(f"\n Revenue total: ${total_revenue:.2f}")
     
     # 6. EVENTOS PSP (webhooks simulados)
-    print("\n📨 Insertando eventos PSP...")
+    print("\nInsertando eventos PSP...")
     psp_events_collection = db.psp_events
     psp_events_collection.drop()
     
@@ -499,7 +500,7 @@ def load_sample_data(db):
     print(f"✅ {len(result.inserted_ids)} eventos PSP insertados")
     
     print("\n" + "="*60)
-    print("✅ CARGA DE DATOS COMPLETADA")
+    print("CARGA DE DATOS COMPLETADA")
     print("="*60)
     
     return {
@@ -526,8 +527,6 @@ def ejemplo_transaccion_checkout(db, data):
     3. Procesar cargo (simulado)
     4. Actualizar invoice a paid
     5. Activar/crear suscripción
-    
-    Todo esto de forma atómica - o todo sucede, o nada.
     """
     
     print("\n" + "="*60)
@@ -539,7 +538,7 @@ def ejemplo_transaccion_checkout(db, data):
     available_users = [u for u in data['users'] if u['_id'] not in existing_user_ids]
     
     if not available_users:
-        print("⚠️  No hay usuarios sin suscripción, usando usuario existente")
+        print("No hay usuarios sin suscripción, usando usuario existente")
         user = data['users'][0]
     else:
         user = available_users[0]
@@ -548,28 +547,27 @@ def ejemplo_transaccion_checkout(db, data):
     plan_id = data['plan_ids'][1]  # Plan anual
     plan = data['plans'][1]
     
-    print(f"\n👤 Usuario: {user['username']} ({user['email']})")
-    print(f"📋 Plan: {plan['name']} - ${plan['price']['amount']}")
+    print(f"\nUsuario: {user['username']} ({user['email']})")
+    print(f"Plan: {plan['name']} - ${plan['price']['amount']}")
     
     # Simular datos de checkout
     idempotency_key = f"idem_checkout_{user['_id']}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
     payment_token = f"tok_test_{random.randint(1000,9999)}"
     
-    print(f"\n🔑 Idempotency Key: {idempotency_key}")
-    print(f"💳 Payment Token: {payment_token}")
+    print(f"\nIdempotency Key: {idempotency_key}")
+    print(f"Payment Token: {payment_token}")
     
     # Iniciar sesión de transacción
     client = db.client
     
-    print("\n🚀 Iniciando transacción multi-documento...")
+    print("\nIniciando transacción multi-documento...")
     
     with client.start_session() as session:
         try:
             # Iniciar transacción con snapshot isolation y write concern majority
             session.start_transaction(
-                read_concern={'level': 'snapshot'},
-                write_concern={'w': 'majority'},
-                read_preference='primary'
+                    read_concern=read_concern.ReadConcern(level='snapshot'),
+                    write_concern=write_concern.WriteConcern(w='majority')
             )
             
             print("   ✓ Transacción iniciada (snapshot isolation, write concern majority)")
@@ -582,7 +580,7 @@ def ejemplo_transaccion_checkout(db, data):
             )
             
             if existing_invoice:
-                print(f"   ⚠️  Operación duplicada detectada! Invoice existente: {existing_invoice['invoice_number']}")
+                print(f"  Operación duplicada detectada! Invoice existente: {existing_invoice['invoice_number']}")
                 session.abort_transaction()
                 return {"status": "duplicate", "invoice": existing_invoice}
             
@@ -600,6 +598,7 @@ def ejemplo_transaccion_checkout(db, data):
                 "_id": ObjectId(),
                 "invoice_number": f"INV-2025-{random.randint(900000,999999)}",
                 "user_id": user['_id'],
+                "username": user['username'],
                 "subscription_id": None,  # Se actualizará después
                 "status": "draft",
                 "subtotal": subtotal,
@@ -639,11 +638,10 @@ def ejemplo_transaccion_checkout(db, data):
             import time
             time.sleep(1)  # Simular latencia de red
             
-            # Simular resultado exitoso (95% de éxito)
             charge_success = random.random() < 0.95
             
             if not charge_success:
-                print("   ❌ Cargo rechazado por el PSP!")
+                print("   Cargo rechazado por el PSP!")
                 session.abort_transaction()
                 return {"status": "payment_failed", "reason": "card_declined"}
             
@@ -702,6 +700,7 @@ def ejemplo_transaccion_checkout(db, data):
             
             subscription_doc = {
                 "user_id": user['_id'],
+                "username": user['username'],
                 "plan": {
                     "plan_id": plan_id,
                     "name": plan['name'],
@@ -749,7 +748,7 @@ def ejemplo_transaccion_checkout(db, data):
             result = db.subscriptions.insert_one(subscription_doc, session=session)
             subscription_id = result.inserted_id
             
-            print(f"   ✓ Suscripción creada y activada")
+            print(f"   Suscripción creada y activada")
             print(f"      - Subscription ID: {subscription_id}")
             print(f"      - Status: active")
             print(f"      - Entitlements: {len(subscription_doc['entitlements'])} features")
@@ -762,12 +761,12 @@ def ejemplo_transaccion_checkout(db, data):
             )
             
             # COMMIT: Todo o nada
-            print("\n   💾 Haciendo commit de la transacción...")
+            print("\n   Haciendo commit de la transacción...")
             session.commit_transaction()
-            print("   ✅ COMMIT EXITOSO - Todos los cambios persistidos atómicamente")
+            print("   COMMIT EXITOSO - Todos los cambios persistidos atómicamente")
             
             print("\n" + "="*60)
-            print("✅ CHECKOUT COMPLETADO EXITOSAMENTE")
+            print("CHECKOUT COMPLETADO EXITOSAMENTE")
             print("="*60)
             print(f"\nResumen:")
             print(f"  - Invoice: {invoice_doc['invoice_number']}")
@@ -784,13 +783,13 @@ def ejemplo_transaccion_checkout(db, data):
             }
             
         except Exception as e:
-            print(f"\n   ❌ ERROR: {e}")
-            print("   🔄 Haciendo ABORT de la transacción...")
+            print(f"\n   ERROR: {e}")
+            print("   Haciendo ABORT de la transacción...")
             session.abort_transaction()
             print("   ✓ ABORT exitoso - Ningún cambio fue persistido")
             
             print("\n" + "="*60)
-            print("❌ CHECKOUT FALLIDO - Base de datos sin cambios")
+            print("CHECKOUT FALLIDO - Base de datos sin cambios")
             print("="*60)
             
             raise
@@ -817,26 +816,26 @@ def ejemplo_transaccion_reembolso(db, data):
     paid_invoice = db.invoices.find_one({"status": "paid", "refunds": {"$size": 0}})
     
     if not paid_invoice:
-        print("⚠️  No hay facturas pagadas sin reembolsos")
+        print(" No hay facturas pagadas sin reembolsos")
         return
     
-    print(f"\n🧾 Invoice: {paid_invoice['invoice_number']}")
-    print(f"💰 Total: ${paid_invoice['total']}")
-    print(f"👤 User ID: {paid_invoice['user_id']}")
+    print(f"\nInvoice: {paid_invoice['invoice_number']}")
+    print(f"Total: ${paid_invoice['total']}")
+    print(f"User ID: {paid_invoice['user_id']}")
     
     # Reembolso total
     refund_amount = paid_invoice['total']
     is_full_refund = True
     
-    print(f"\n💸 Procesando reembolso total de ${refund_amount}...")
+    print(f"\nProcesando reembolso total de ${refund_amount}...")
     
     client = db.client
     
     with client.start_session() as session:
         try:
             session.start_transaction(
-                read_concern={'level': 'snapshot'},
-                write_concern={'w': 'majority'}
+                read_concern=read_concern.ReadConcern(level='snapshot'),
+                write_concern=write_concern.WriteConcern(w='majority'),
             )
             
             print("   ✓ Transacción iniciada")
@@ -906,7 +905,7 @@ def ejemplo_transaccion_reembolso(db, data):
             print("   ✅ COMMIT EXITOSO")
             
             print("\n" + "="*60)
-            print("✅ REEMBOLSO COMPLETADO")
+            print("REEMBOLSO COMPLETADO")
             print("="*60)
             print(f"\nResumen:")
             print(f"  - Reembolso: ${refund_amount}")
@@ -914,7 +913,7 @@ def ejemplo_transaccion_reembolso(db, data):
             print(f"  - Suscripción: {'Cancelada' if is_full_refund else 'Activa'}")
             
         except Exception as e:
-            print(f"\n   ❌ ERROR: {e}")
+            print(f"\n   ERROR: {e}")
             session.abort_transaction()
             print("   ✓ ABORT exitoso")
             raise
@@ -931,7 +930,7 @@ def ejemplos_queries(db):
     print("="*60)
     
     # 1. Suscripciones activas
-    print("\n📊 1. Contar suscripciones por estado:")
+    print("\n1. Contar suscripciones por estado:")
     pipeline = [
         {"$group": {"_id": "$status", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}}
@@ -941,7 +940,7 @@ def ejemplos_queries(db):
         print(f"   - {r['_id']}: {r['count']}")
     
     # 2. Revenue total
-    print("\n💰 2. Revenue total (facturas pagadas):")
+    print("\n2. Revenue total (facturas pagadas):")
     pipeline = [
         {"$match": {"status": "paid"}},
         {"$group": {"_id": None, "total": {"$sum": "$total"}, "count": {"$sum": 1}}}
@@ -952,12 +951,12 @@ def ejemplos_queries(db):
         print(f"   - Revenue: ${result[0]['total']:.2f}")
     
     # 3. Usuarios con premium activo
-    print("\n👥 3. Usuarios con premium activo:")
+    print("\n3. Usuarios con premium activo:")
     count = db.subscriptions.count_documents({"status": "active"})
     print(f"   - {count} suscripciones activas")
     
     # 4. Suscripciones próximas a renovar
-    print("\n📅 4. Suscripciones que renuevan en los próximos 7 días:")
+    print("\n4. Suscripciones que renuevan en los próximos 7 días:")
     from_date = datetime.utcnow()
     to_date = from_date + timedelta(days=7)
     
@@ -969,7 +968,7 @@ def ejemplos_queries(db):
     print(f"   - {upcoming} suscripciones")
     
     # 5. Plan más popular
-    print("\n🏆 5. Planes más populares:")
+    print("\n5. Planes más populares:")
     pipeline = [
         {"$match": {"status": {"$in": ["active", "past_due"]}}},
         {"$group": {"_id": "$plan.name", "count": {"$sum": 1}}},
@@ -981,7 +980,7 @@ def ejemplos_queries(db):
         print(f"   {i}. {r['_id']}: {r['count']} suscripciones")
     
     # 6. Tasa de fallo de pagos
-    print("\n⚠️  6. Tasa de fallo de pagos:")
+    print("\n 6. Tasa de fallo de pagos:")
     total_charges = db.invoices.aggregate([
         {"$unwind": "$charges"},
         {"$group": {"_id": "$charges.status", "count": {"$sum": 1}}}
@@ -1005,7 +1004,7 @@ def main():
     client = connect_to_mongodb()
     db = client['duolingo']
     
-    print(f"\n📂 Base de datos: {db.name}")
+    print(f"\nBase de datos: {db.name}")
     
     # Cargar datos de ejemplo
     data = load_sample_data(db)
@@ -1013,12 +1012,12 @@ def main():
     # Queries de ejemplo
     ejemplos_queries(db)
     
-    # # Ejemplos de transacciones
-    # input("\n⏸️  Presiona ENTER para ejecutar ejemplo de CHECKOUT (transacción)...")
-    # ejemplo_transaccion_checkout(db, data)
+    # Ejemplos de transacciones
+    input("\n⏸️  Presiona ENTER para ejecutar ejemplo de CHECKOUT (transacción)...")
+    ejemplo_transaccion_checkout(db, data)
     
-    # input("\n⏸️  Presiona ENTER para ejecutar ejemplo de REEMBOLSO (transacción)...")
-    # ejemplo_transaccion_reembolso(db, data)
+    input("\n⏸️  Presiona ENTER para ejecutar ejemplo de REEMBOLSO (transacción)...")
+    ejemplo_transaccion_reembolso(db, data)
     
     # print("\n" + "="*60)
     # print("🎉 SCRIPT COMPLETADO")

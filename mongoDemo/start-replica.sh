@@ -12,14 +12,14 @@ docker exec -it mongo1 mongosh --eval '
   })
 '
 
-echo "Esperando elección de PRIMARY..."
-sleep 10
+# echo "Esperando elección de PRIMARY..."
+# sleep 5
 
 echo "Verificando estado del cluster:"
 docker exec -it mongo1 mongosh --eval 'rs.status().members.forEach(m => print(m.name + " - " + m.stateStr))'
 
-echo "
-Replica set listo!
-PRIMARY será mongo1 (prioridad 2)
-Conexión: mongodb://localhost:27017,localhost:27018,localhost:27019/?replicaSet=rs0
-"
+# echo "
+# Replica set listo!
+# PRIMARY será mongo1 (prioridad 2)
+# Conexión: mongodb://localhost:27017,localhost:27018,localhost:27019/?replicaSet=rs0
+# "
